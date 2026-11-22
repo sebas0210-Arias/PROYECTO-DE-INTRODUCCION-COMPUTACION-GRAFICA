@@ -480,6 +480,43 @@ void registrarFiguraPoligono(
         figuraCount++;
     }
 }
+// ROTAR EL RELLENO DE UNA FIGURA
+void rotarRellenoFigura(
+    int indice,
+    float centroX,
+    float centroY,
+    float coseno,
+    float seno
+)
+{
+    for (int r = 0; r < (int)rellenos.size(); r++)
+    {
+        if (rellenos[r].figuraPropietaria != indice)
+            continue;
+
+        for (int c = 0; c < (int)celdasRellenadas.size(); c++)
+        {
+            if (c >= (int)idsRellenoPorCelda.size())
+                continue;
+
+            if (idsRellenoPorCelda[c] != r)
+                continue;
+
+            float x = celdasRellenadas[c].x - centroX;
+            float y = celdasRellenadas[c].y - centroY;
+
+            float xNuevo = x * coseno - y * seno;
+            float yNuevo = x * seno + y * coseno;
+
+            celdasRellenadas[c].x =
+                (int)round(xNuevo + centroX);
+
+            celdasRellenadas[c].y =
+                (int)round(yNuevo + centroY);
+        }
+    }
+}
+
 // ROTAR UNA FIGURA INDIVIDUAL
 void rotarFigura(int indice, float grados)
 {
@@ -487,6 +524,10 @@ void rotarFigura(int indice, float grados)
         return;
 
     if (figuraBorrada[indice])
+        return;
+
+    // LOS CIRCULOS NO NECESITAN ROTACION
+    if (tiposFiguras[indice] == FIGURA_CIRCULO)
         return;
 
     int n = cantidadVertices[indice];
@@ -565,6 +606,15 @@ void rotarFigura(int indice, float grados)
         // ACTUALIZAR REGISTRO DE LA FIGURA
         figuraInicio[indice] = nuevoInicio;
         figuraCantidad[indice] = cantidad;
+
+        // ROTAR TAMBIEN EL RELLENO
+        rotarRellenoFigura(
+            indice,
+            centroX,
+            centroY,
+            coseno,
+            seno
+        );
 
         std::printf("Dibujo libre rotado %.2f grados.\n", grados);
 
@@ -659,6 +709,15 @@ void rotarFigura(int indice, float grados)
         verticesY[indice][i] = nuevosY[i];
     }
 
+    // ROTAR TAMBIEN EL RELLENO
+    rotarRellenoFigura(
+        indice,
+        centroX,
+        centroY,
+        coseno,
+        seno
+    );
+
     std::printf("Figura rotada %.2f grados.\n", grados);
 }
 // TRASLADAR UNA FIGURA INDIVIDUAL
@@ -670,34 +729,49 @@ void trasladarFigura(int indice, int tx, int ty)
     if (figuraBorrada[indice])
         return;
 
+    // SI ES UN CIRCULO
     if (tiposFiguras[indice] == FIGURA_CIRCULO)
     {
-        std::printf("La traslacion de circulos aun no esta implementada.\n");
-        return;
-    }
+        int c = figuraInicio[indice];
 
-    int inicio = figuraInicio[indice];
-    int cantidad = figuraCantidad[indice];
-
-    // TRASLADAR LAS CELDAS DIBUJADAS
-    for (int i = 0; i < cantidad; i++)
-    {
-        int celda = inicio + i;
-
-        if (celda >= 0 && celda < lineCellCount)
+        if (c >= 0 && c < circleCount)
         {
-            lineCellsX[celda] += tx;
-            lineCellsY[celda] += ty;
+            allCircleCenterX[c] += tx;
+            allCircleCenterY[c] += ty;
+        }
+    }
+    else
+    {
+        int inicio = figuraInicio[indice];
+        int cantidad = figuraCantidad[indice];
+
+        // TRASLADAR CONTORNO
+        for (int i = 0; i < cantidad; i++)
+        {
+            int celda = inicio + i;
+
+            if (celda >= 0 && celda < lineCellCount)
+            {
+                lineCellsX[celda] += tx;
+                lineCellsY[celda] += ty;
+            }
+        }
+
+        // TRASLADAR VERTICES
+        int n = cantidadVertices[indice];
+
+        for (int i = 0; i < n; i++)
+        {
+            verticesX[indice][i] += tx;
+            verticesY[indice][i] += ty;
         }
     }
 
-    // TRASLADAR TAMBIEN EL RELLENO DE LA FIGURA
+    // TRASLADAR RELLENO
     for (int r = 0; r < (int)rellenos.size(); r++)
     {
-        // COMPROBAR SI EL RELLENO PERTENECE A ESTA FIGURA
         if (rellenos[r].figuraPropietaria == indice)
         {
-            // MOVER TODAS LAS CELDAS DE ESE RELLENO
             for (int c = 0; c < (int)celdasRellenadas.size(); c++)
             {
                 if (c < (int)idsRellenoPorCelda.size() &&
@@ -708,15 +782,6 @@ void trasladarFigura(int indice, int tx, int ty)
                 }
             }
         }
-    }
-
-    // TRASLADAR LOS VERTICES, SI LA FIGURA LOS TIENE
-    int n = cantidadVertices[indice];
-
-    for (int i = 0; i < n; i++)
-    {
-        verticesX[indice][i] += tx;
-        verticesY[indice][i] += ty;
     }
 
     std::printf(
@@ -864,18 +929,16 @@ bool celdaEsContorno(int x, int y)
 
             if (c >= 0 && c < circleCount)
             {
-                int dx = x - allCircleCenterX[c];
-                int dy = y - allCircleCenterY[c];
-
-                int radio = allCircleRadius[c];
-
-                int distancia2 = dx * dx + dy * dy;
-                int radio2 = radio * radio;
-
-                // CONTORNO CIRCULAR CON UN PEQUEÑO MARGEN
-                if (std::abs(distancia2 - radio2) <= radio)
+                if (celdaPerteneceCirculo(
+                    x,
+                    y,
+                    allCircleCenterX[c],
+                    allCircleCenterY[c],
+                    allCircleRadius[c]
+                ))
                 {
                     return true;
+                
                 }
             }
         }
@@ -937,7 +1000,13 @@ int obtenerFiguraContorno(int x, int y)
                 int distancia2 = dx * dx + dy * dy;
                 int radio2 = radio * radio;
 
-                if (std::abs(distancia2 - radio2) <= radio)
+                if (celdaPerteneceCirculo(
+                    x,
+                    y,
+                    allCircleCenterX[c],
+                    allCircleCenterY[c],
+                    allCircleRadius[c]
+                ))
                 {
                     return f;
                 }
@@ -1421,7 +1490,7 @@ void mouse_button_callback(
                     {
                         figuraBorrada[f] = true;
                         figuraEncontrada = true;
-
+                        figuraAEliminar = f;
 
                         break;
                     }
